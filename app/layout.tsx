@@ -24,7 +24,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body>
         <ServiceWorkerRegister />
         <header className="topnav">
-          <div className="topnav-inner">
+          <div className={`topnav-inner ${user ? "" : "solo"}`.trim()}>
             <Link href={user ? "/dashboard" : "/login"}>Barakify</Link>
             {user ? (
               <div className="row">
@@ -37,16 +37,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   </button>
                 </form>
               </div>
-            ) : (
-              <div className="row">
-                <Link href="/login" className="muted">
-                  Login
-                </Link>
-                <Link href="/signup" className="muted">
-                  Signup
-                </Link>
-              </div>
-            )}
+            ) : null}
           </div>
         </header>
         <main className="container">{children}</main>

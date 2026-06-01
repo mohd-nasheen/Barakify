@@ -1,19 +1,6 @@
-import Link from "next/link";
-import { AuthForm } from "@/components/AuthForm";
 import { loginAction } from "@/app/actions/auth";
+import { PremiumAuthShell } from "@/components/PremiumAuthShell";
 
 export default function LoginPage() {
-  return (
-    <div className="stack">
-      <AuthForm title="Login" action={loginAction} submitLabel="Login" />
-      <div className="row">
-        <Link href="/signup" className="muted">
-          Create account
-        </Link>
-        <Link href="/forgot-password" className="muted">
-          Forgot password
-        </Link>
-      </div>
-    </div>
-  );
+  return <PremiumAuthShell mode="login" action={loginAction} />;
 }
