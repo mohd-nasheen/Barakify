@@ -1,12 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import "./globals.css";
-import { logoutAction } from "@/app/actions/auth";
 import { getOptionalUser } from "@/lib/auth";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { NavThemeToggle } from "@/components/NavThemeToggle";
 import { NavLogo } from "@/components/NavLogo";
+import { NavExportButton } from "@/components/NavExportButton";
+import { NavLogout } from "@/components/NavLogout";
 
 export const metadata: Metadata = {
   title: "Barakify PWA",
@@ -45,12 +46,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <Link href="/settings/account" className="muted nav-account-link">
                     Account
                   </Link>
+                  <NavExportButton />
                   <NavThemeToggle />
-                  <form action={logoutAction}>
-                    <button type="submit" className="button ghost slim">
-                      Logout
-                    </button>
-                  </form>
+                  <NavLogout />
                 </div>
               ) : (
                 <NavThemeToggle />

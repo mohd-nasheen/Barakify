@@ -17,6 +17,7 @@ import {
 import { cloneMonthAction } from "@/app/actions/clone";
 import type { Category, Transaction } from "@/lib/types";
 import { AnimatedCurrency, GlassCard, ProgressRing } from "@/components/parity-ui";
+import { ExportModal } from "@/components/ExportModal";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const EXPENSE_CATEGORY_DEFAULTS = ["Credit Card", "Rent", "Savings", "Home", "Gold", "Debt", "Clothing", "Others"];
@@ -66,9 +67,16 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
   const [rowDeleteModal, setRowDeleteModal] = useState<{ open: boolean; row: Transaction | null }>({ open: false, row: null });
   const [deletingCategory, setDeletingCategory] = useState(false);
   const [deletingRow, setDeletingRow] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   const monthRailRef = useRef<HTMLDivElement | null>(null);
   const autosaveTimers = useRef(new Map<string, number>());
+
+  useEffect(() => {
+    const handler = () => setShowExportModal(true);
+    window.addEventListener("open-export-modal", handler);
+    return () => window.removeEventListener("open-export-modal", handler);
+  }, []);
 
   const selectedMonth = `${selectedYear}-${String(selectedMonthIndex + 1).padStart(2, "0")}`;
   const nextMonth = useMemo(() => nextMonthOf(selectedMonth), [selectedMonth]);
@@ -660,6 +668,14 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
           </motion.div>
         ) : null}
       </AnimatePresence>
+
+      <ExportModal
+        open={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        transactions={initialTransactions}
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+      />
     </div>
   );
 }
