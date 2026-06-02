@@ -3,15 +3,18 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { PieChart, Pie, Cell } from "recharts";
 import {
   addCategoryAction,
   addTransactionAction,
   deleteCategoryAction,
+  deleteTransactionAction,
   ensureMonthStructureAction,
   renameCategoryAction,
   togglePaidAction,
   updateTransactionAction
 } from "@/app/actions/finance";
+import { cloneMonthAction } from "@/app/actions/clone";
 import type { Category, Transaction } from "@/lib/types";
 import { AnimatedCurrency, GlassCard, ProgressRing } from "@/components/parity-ui";
 
@@ -24,6 +27,12 @@ function createTempId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function nextMonthOf(month: string): string {
+  const [year, mm] = month.split("-").map(Number);
+  const d = new Date(year, mm, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export function DashboardClient({ initialTransactions, categories }: { initialTransactions: Transaction[]; categories: Category[] }) {
   const router = useRouter();
   const now = new Date();
@@ -32,15 +41,20 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
   const [showExpenseComposer, setShowExpenseComposer] = useState(false);
   const [showIncomeComposer, setShowIncomeComposer] = useState(false);
   const [showCategorySettings, setShowCategorySettings] = useState(false);
+  const [showCloneModal, setShowCloneModal] = useState(false);
+  const [cloning, setCloning] = useState(false);
+  const [cloneError, setCloneError] = useState<string | null>(null);
   const [composerCategory, setComposerCategory] = useState(EXPENSE_CATEGORY_DEFAULTS[0]);
   const [composerNewCategory, setComposerNewCategory] = useState("");
   const [hoverSlice, setHoverSlice] = useState<string | null>(null);
   const [optimisticRows, setOptimisticRows] = useState<Record<string, RowPatch>>({});
   const [pendingCreateRows, setPendingCreateRows] = useState<Transaction[]>([]);
   const [pendingRows, setPendingRows] = useState<Record<string, boolean>>({});
-  const [_, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const [savingIncome, setSavingIncome] = useState(false);
   const [savingExpense, setSavingExpense] = useState(false);
+  const [incomeDraft, setIncomeDraft] = useState({ category: "", amount: "" });
+  const [expenseDraft, setExpenseDraft] = useState({ category: "", amount: "" });
   const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
   const [localCategories, setLocalCategories] = useState<string[]>([]);
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; category: string; blocked: boolean }>({
@@ -48,16 +62,30 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
     category: "",
     blocked: false
   });
+  const [rowDeleteModal, setRowDeleteModal] = useState<{ open: boolean; row: Transaction | null }>({ open: false, row: null });
   const [deletingCategory, setDeletingCategory] = useState(false);
+  const [deletingRow, setDeletingRow] = useState(false);
 
   const monthRailRef = useRef<HTMLDivElement | null>(null);
-  const ensureFormRef = useRef<HTMLFormElement | null>(null);
   const autosaveTimers = useRef(new Map<string, number>());
 
   const selectedMonth = `${selectedYear}-${String(selectedMonthIndex + 1).padStart(2, "0")}`;
+  const nextMonth = useMemo(() => nextMonthOf(selectedMonth), [selectedMonth]);
+  const nextMonthLabel = useMemo(() => {
+    const [y, m] = nextMonth.split("-").map(Number);
+    return `${MONTHS[m - 1]} ${y}`;
+  }, [nextMonth]);
+
   useEffect(() => {
-    ensureFormRef.current?.requestSubmit();
-  }, [selectedMonth]);
+    let cancelled = false;
+    const fd = new FormData();
+    fd.set("month", selectedMonth);
+    (async () => {
+      await ensureMonthStructureAction(fd);
+      if (!cancelled) startTransition(() => router.refresh());
+    })();
+    return () => { cancelled = true; };
+  }, [selectedMonth, startTransition, router]);
 
   const mergedRows = useMemo(
     () =>
@@ -78,7 +106,28 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
   const completion = expenseRows.length > 0 ? paidExpenseCount / expenseRows.length : 0;
   const totalIncome = incomeRows.reduce((sum, t) => sum + t.amount, 0);
   const totalExpense = expenseRows.reduce((sum, t) => sum + t.amount, 0);
-  const remainingExpense = expenseRows.filter((t) => !t.is_paid).reduce((sum, t) => sum + t.amount, 0);
+
+  // Clone button is disabled only when the current month is completely empty.
+  const currentMonthIsEmpty = expenseRows.length === 0 && incomeRows.length === 0;
+
+  const runningBalance = useMemo(() => {
+    const monthTotals = mergedRows.reduce<Record<string, { income: number; expense: number }>>((acc, row) => {
+      const key = monthKey(new Date(row.transaction_date));
+      const bucket = acc[key] ?? { income: 0, expense: 0 };
+      if (row.type === "income") bucket.income += row.amount;
+      else bucket.expense += row.amount;
+      acc[key] = bucket;
+      return acc;
+    }, {});
+    const months = Object.keys(monthTotals).sort();
+    let balance = 0;
+    for (const month of months) {
+      const bucket = monthTotals[month];
+      balance += bucket.income - bucket.expense;
+      if (month === selectedMonth) return balance;
+    }
+    return balance;
+  }, [mergedRows, selectedMonth]);
 
   const expenseCategories = useMemo(() => {
     const persisted = categories
@@ -114,9 +163,8 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
     });
   }, [expenseRows]);
 
-  const centerSlice = hoverSlice ? donutSlices.find((slice) => slice.name === hoverSlice) : null;
-  const centerValue = centerSlice ? centerSlice.value : expenseRows.reduce((sum, row) => sum + row.amount, 0);
-  const centerLabel = centerSlice ? centerSlice.name : "Total Expenses";
+  const centerValue = expenseRows.reduce((sum, row) => sum + row.amount, 0);
+  const centerLabel = "Total Expenses";
 
   async function saveRowPatch(row: Transaction, patch: RowPatch) {
     const next = { ...row, ...patch };
@@ -183,6 +231,7 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
     try {
       await addTransactionAction(formData);
       setShowIncomeComposer(false);
+      setIncomeDraft({ category: "", amount: "" });
       router.refresh();
     } finally {
       setPendingCreateRows((prev) => prev.filter((row) => row.id !== tempId));
@@ -215,6 +264,7 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
     try {
       await addTransactionAction(formData);
       setShowExpenseComposer(false);
+      setExpenseDraft({ category: "", amount: "" });
       setComposerCategory(EXPENSE_CATEGORY_DEFAULTS[0]);
       setComposerNewCategory("");
       router.refresh();
@@ -248,12 +298,60 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
     }
   }
 
+  function requestDeleteRow(row: Transaction) {
+    setRowDeleteModal({ open: true, row });
+  }
+
+  async function confirmDeleteRow() {
+    if (!rowDeleteModal.row) {
+      setRowDeleteModal({ open: false, row: null });
+      return;
+    }
+    setDeletingRow(true);
+    try {
+      const fd = new FormData();
+      fd.set("id", rowDeleteModal.row.id);
+      await deleteTransactionAction(fd);
+      setRowDeleteModal({ open: false, row: null });
+      router.refresh();
+    } finally {
+      setDeletingRow(false);
+    }
+  }
+
+  async function confirmClone() {
+    if (cloning) return;
+    setCloneError(null);
+    setCloning(true);
+    try {
+      const fd = new FormData();
+      fd.set("source_month", selectedMonth);
+      const result = await cloneMonthAction(fd);
+      if (result?.error) {
+        setCloneError(`Clone failed: ${result.error}`);
+      } else {
+        setShowCloneModal(false);
+        router.refresh();
+      }
+    } finally {
+      setCloning(false);
+    }
+  }
+
+  function cancelIncomeComposer() {
+    setIncomeDraft({ category: "", amount: "" });
+    setShowIncomeComposer(false);
+  }
+
+  function cancelExpenseComposer() {
+    setExpenseDraft({ category: "", amount: "" });
+    setComposerCategory(EXPENSE_CATEGORY_DEFAULTS[0]);
+    setComposerNewCategory("");
+    setShowExpenseComposer(false);
+  }
+
   return (
     <div className="stack month-workspace">
-      <form action={ensureMonthStructureAction} ref={ensureFormRef}>
-        <input type="hidden" name="month" value={selectedMonth} />
-      </form>
-
       <GlassCard className="month-hero">
         <div className="year-row">
           <motion.button className="month-nav" type="button" onClick={() => setSelectedYear((year) => year - 1)} whileHover={{ y: -4, scale: 1.03, boxShadow: "0 10px 22px rgba(94,161,255,.32)" }} whileTap={{ scale: 0.94 }}>
@@ -282,6 +380,7 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
 
       <AnimatePresence mode="wait">
         <motion.div key={selectedMonth} className="stack" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ type: "spring", stiffness: 180, damping: 24 }}>
+          {/* ── Income ── */}
           <GlassCard className="section-income">
             <div className="row"><h3 className="section-title">Income</h3></div>
             <div className="workspace-table compact">
@@ -292,13 +391,14 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
                   pending={!!pendingRows[row.id]}
                   onNameChange={(value) => queueAutoSave(row, { category: value })}
                   onAmountChange={(value) => queueAutoSave(row, { amount: value })}
+                  onDelete={() => requestDeleteRow(row)}
                 />
               ))}
               <AnimatePresence initial={false}>
                 {showIncomeComposer ? (
                   <motion.form
                     action={submitIncomeRow}
-                    className="workspace-row income-row add-row composer-row tight-row"
+                    className="workspace-row add-row tight-row income-add-row"
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -6 }}
@@ -314,9 +414,10 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
                     <input type="hidden" name="transaction_date" value={`${selectedMonth}-01`} />
                     <input type="hidden" name="due_date" value={`${selectedMonth}-01`} />
                     <input type="hidden" name="notes" value="Income" />
-                    <input name="category" placeholder="Name" required autoFocus />
-                    <input name="amount" type="number" step="0.01" min="0" placeholder="0" required />
-                    <button className="button slim add-inline-btn" type="submit" disabled={savingIncome}>{savingIncome ? "Adding..." : "Add"}</button>
+                    <input name="category" placeholder="Name" required autoFocus value={incomeDraft.category} onChange={(e) => setIncomeDraft((d) => ({ ...d, category: e.target.value }))} />
+                    <input name="amount" type="number" step="0.01" min="0" placeholder="0" required value={incomeDraft.amount} onChange={(e) => setIncomeDraft((d) => ({ ...d, amount: e.target.value }))} />
+                    <button className="button slim add-inline-btn action-btn" type="submit" disabled={savingIncome}>{savingIncome ? "Adding..." : "Add"}</button>
+                    <button className="button slim ghost action-btn" type="button" onClick={cancelIncomeComposer}>Cancel</button>
                   </motion.form>
                 ) : (
                   <motion.button className="add-inline" type="button" onClick={() => setShowIncomeComposer(true)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -327,6 +428,7 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
             </div>
           </GlassCard>
 
+          {/* ── Summary ── */}
           <GlassCard className="section-completion">
             <div className="overview-row">
               <ProgressRing progress={completion} size={106} />
@@ -335,20 +437,32 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
                 <p className="metric-line">{paidExpenseCount}/{expenseRows.length} paid</p>
                 <p className="metric-line income">Total Income Rs {totalIncome.toLocaleString("en-IN")}</p>
                 <p className="metric-line expense">Total Expenses Rs {totalExpense.toLocaleString("en-IN")}</p>
-                <p className="metric-line warning">Available Balance</p>
-                <AnimatedCurrency value={totalIncome - totalExpense} />
+                <p className="metric-line warning">Running Balance</p>
+                <AnimatedCurrency value={runningBalance} />
               </div>
             </div>
           </GlassCard>
 
+          {/* ── Expenses ── */}
           <GlassCard className="section-expenses">
             <div className="row">
               <h3 className="section-title">Expenses</h3>
-              <button className="button ghost" type="button" onClick={() => setShowCategorySettings(true)}>
-                Category Settings
-              </button>
+              <div className="row header-actions">
+                <button
+                  className="button ghost slim"
+                  type="button"
+                  onClick={() => { setCloneError(null); setShowCloneModal(true); }}
+                  disabled={currentMonthIsEmpty}
+                  title={currentMonthIsEmpty ? "No data to clone" : `Clone this month to ${nextMonthLabel}`}
+                >
+                  Clone Month
+                </button>
+                <button className="button ghost slim" type="button" onClick={() => setShowCategorySettings(true)}>
+                  Category Settings
+                </button>
+              </div>
             </div>
-            <div className="sheet-head"><span>Paid</span><span>Name</span><span>Amount</span><span>Category</span></div>
+            <div className="sheet-head expense-head"><span>Paid</span><span>Name</span><span>Amount</span><span>Category</span></div>
             <div className="workspace-table compact">
               {expenseRows.map((row) => (
                 <ExpenseRow
@@ -360,14 +474,14 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
                   onNameChange={(value) => queueAutoSave(row, { category: value })}
                   onAmountChange={(value) => queueAutoSave(row, { amount: value })}
                   onMetaChange={(value) => queueAutoSave(row, { notes: value })}
+                  onDelete={() => requestDeleteRow(row)}
                 />
               ))}
-
               <AnimatePresence initial={false}>
                 {showExpenseComposer ? (
                   <motion.form
                     action={submitExpenseRow}
-                    className="workspace-row add-row composer-row tight-row"
+                    className="workspace-row add-row tight-row expense-add-row"
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -6 }}
@@ -384,9 +498,8 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
                     <input type="hidden" name="due_date" value={`${selectedMonth}-01`} />
                     <input type="hidden" name="is_recurring" value="on" />
                     <input type="hidden" name="meta_category_new" value={composerNewCategory} />
-                    <span className="check-placeholder" />
-                    <input name="category" placeholder="Name" required autoFocus />
-                    <input name="amount" type="number" step="0.01" min="0" placeholder="0" required />
+                    <input name="category" placeholder="Name" required autoFocus value={expenseDraft.category} onChange={(e) => setExpenseDraft((d) => ({ ...d, category: e.target.value }))} />
+                    <input name="amount" type="number" step="0.01" min="0" placeholder="0" required value={expenseDraft.amount} onChange={(e) => setExpenseDraft((d) => ({ ...d, amount: e.target.value }))} />
                     <select
                       name="meta_category"
                       value={composerCategory}
@@ -400,7 +513,8 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
                         <option key={category} value={category}>{category}</option>
                       ))}
                     </select>
-                    <button className="button slim add-inline-btn" type="submit" disabled={savingExpense}>{savingExpense ? "Adding..." : "Add"}</button>
+                    <button className="button slim add-inline-btn action-btn" type="submit" disabled={savingExpense}>{savingExpense ? "Adding..." : "Add"}</button>
+                    <button className="button slim ghost action-btn" type="button" onClick={cancelExpenseComposer}>Cancel</button>
                   </motion.form>
                 ) : (
                   <motion.button className="add-inline" type="button" onClick={() => setShowExpenseComposer(true)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -411,6 +525,7 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
             </div>
           </GlassCard>
 
+          {/* ── Breakdown ── */}
           <GlassCard className="section-breakdown">
             <h3 className="section-title">Expense Breakdown</h3>
             <InteractiveDonut slices={donutSlices} centerValue={centerValue} centerLabel={centerLabel} hoverSlice={hoverSlice} setHoverSlice={setHoverSlice} />
@@ -418,7 +533,33 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
         </motion.div>
       </AnimatePresence>
 
+      {/* ── Modals ── */}
       <AnimatePresence>
+        {showCloneModal ? (
+          <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className="modal-card" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }}>
+              <div className="row">
+                <h3>Clone {MONTHS[selectedMonthIndex]} {selectedYear} → {nextMonthLabel}</h3>
+                <button className="button ghost slim" type="button" onClick={() => setShowCloneModal(false)}>✕</button>
+              </div>
+              <div className="clone-checklist">
+                <p className="clone-check-item">✓ Copy all income rows</p>
+                <p className="clone-check-item">✓ Copy all expense rows</p>
+                <p className="clone-check-item">✓ Copy all categories</p>
+                <p className="clone-check-item">✓ Reset all expense checkboxes</p>
+              </div>
+              <p className="muted" style={{ fontSize: 13 }}>The destination month data will be replaced.</p>
+              {cloneError ? <p className="status error">{cloneError}</p> : null}
+              <div className="row">
+                <button className="button ghost slim" type="button" onClick={() => setShowCloneModal(false)}>Cancel</button>
+                <button className="button slim clone-confirm-btn" type="button" onClick={confirmClone} disabled={cloning}>
+                  {cloning ? "Cloning..." : "Clone"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+
         {showCategorySettings ? (
           <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <motion.div className="modal-card" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }}>
@@ -427,34 +568,29 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
                 <button className="button ghost slim" type="button" onClick={() => setShowCategorySettings(false)}>Close</button>
               </div>
               <div className="category-settings-body">
-              <form action={addCategoryAction} className="row">
-                <input type="hidden" name="type" value="expense" />
-                <input name="name" required placeholder="Add Category" />
-                <button className="button slim" type="submit">Add</button>
-              </form>
-              <div className="stack">
-                {expenseCategories.map((cat) => (
-                  <CategoryManagerRow
-                    key={cat}
-                    category={cat}
-                    onDeleteRequest={requestDeleteCategory}
-                  />
-                ))}
-              </div>
+                <form action={addCategoryAction} className="row">
+                  <input type="hidden" name="type" value="expense" />
+                  <input name="name" required placeholder="Add Category" />
+                  <button className="button slim" type="submit">Add</button>
+                </form>
+                <div className="stack">
+                  {expenseCategories.map((cat) => (
+                    <CategoryManagerRow key={cat} category={cat} onDeleteRequest={requestDeleteCategory} />
+                  ))}
+                </div>
               </div>
             </motion.div>
           </motion.div>
         ) : null}
+
         {deleteModal.open ? (
           <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <motion.div className="modal-card" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }}>
               <h3>{deleteModal.blocked ? "Category In Use" : "Delete Category"}</h3>
               {deleteModal.blocked ? (
-                <p className="muted">
-                  "{deleteModal.category}" is currently being used by existing expenses. Please move those expenses to another category before deleting this category.
-                </p>
+                <p className="muted">&quot;{deleteModal.category}&quot; is used by existing expenses. Move those expenses to another category first.</p>
               ) : (
-                <p className="muted">Are you sure you want to delete "{deleteModal.category}"? This action cannot be undone.</p>
+                <p className="muted">Delete &quot;{deleteModal.category}&quot;? This cannot be undone.</p>
               )}
               <div className="row">
                 <button className="button ghost slim" type="button" onClick={() => setDeleteModal({ open: false, category: "", blocked: false })}>
@@ -469,60 +605,108 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
             </motion.div>
           </motion.div>
         ) : null}
+
+        {rowDeleteModal.open ? (
+          <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className="modal-card" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }}>
+              <h3>Delete Row</h3>
+              <p className="muted">Delete &quot;{rowDeleteModal.row?.category}&quot;? This cannot be undone.</p>
+              <div className="row">
+                <button className="button ghost slim" type="button" onClick={() => setRowDeleteModal({ open: false, row: null })}>Cancel</button>
+                <button className="button slim" type="button" onClick={confirmDeleteRow} disabled={deletingRow}>
+                  {deletingRow ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
       </AnimatePresence>
     </div>
   );
 }
 
+// ── Expense Row ──────────────────────────────────────────────────────────────
+
 function ExpenseRow({
-  row,
-  categories,
-  pending,
-  onToggle,
-  onNameChange,
-  onAmountChange,
-  onMetaChange
+  row, categories, pending, onToggle, onNameChange, onAmountChange, onMetaChange, onDelete
 }: {
-  row: Transaction;
-  categories: string[];
-  pending: boolean;
-  onToggle: () => void;
-  onNameChange: (value: string) => void;
-  onAmountChange: (value: number) => void;
-  onMetaChange: (value: string) => void;
+  row: Transaction; categories: string[]; pending: boolean;
+  onToggle: () => void; onNameChange: (v: string) => void;
+  onAmountChange: (v: number) => void; onMetaChange: (v: string) => void; onDelete: () => void;
 }) {
+  const [dragX, setDragX] = useState(0);
+  const swipeThreshold = -112;
   return (
-    <motion.div className={`workspace-row row-hover ${row.is_paid ? "is-paid" : ""} ${pending ? "row-pending" : ""}`} whileTap={{ scale: 0.998 }}>
-      <motion.button className={`check-btn ${row.is_paid ? "done" : ""}`} type="button" onClick={onToggle} whileTap={{ scale: 0.93 }} animate={row.is_paid ? { scale: [1, 0.93, 1], boxShadow: ["0 0 0 rgba(94,161,255,0)", "0 0 16px rgba(94,161,255,.45)", "0 0 0 rgba(94,161,255,0)"] } : {}}>
-        {row.is_paid ? "\u2611" : "\u2610"}
-      </motion.button>
-      <input defaultValue={row.category} aria-label="Name" onChange={(e) => onNameChange(e.target.value)} />
-      <input defaultValue={row.amount} type="number" step="0.01" min="0" aria-label="Amount" onChange={(e) => onAmountChange(Number(e.target.value || 0))} />
-      <select value={rowCategory(row, "expense")} onChange={(e) => onMetaChange(e.target.value)}>
-        {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-      </select>
-    </motion.div>
+    <div className="swipe-shell">
+      <motion.div className="swipe-delete-bg" animate={{ opacity: Math.min(1, Math.abs(dragX) / 110) }}>
+        <motion.span animate={{ scale: 0.92 + Math.min(0.34, Math.abs(dragX) / 200) }}>✕</motion.span>
+      </motion.div>
+      <motion.div
+        className={`workspace-row row-hover ${row.is_paid ? "is-paid" : ""} ${pending ? "row-pending" : ""}`}
+        whileTap={{ scale: 0.998 }}
+        drag="x"
+        dragConstraints={{ left: -140, right: 0 }}
+        dragElastic={0.08}
+        dragMomentum={false}
+        onDrag={(_, info) => setDragX(Math.min(0, info.offset.x))}
+        onDragEnd={(_, info) => { const x = Math.min(0, info.offset.x); setDragX(0); if (x <= swipeThreshold) onDelete(); }}
+        transition={{ type: "spring", stiffness: 380, damping: 34, mass: 0.6 }}
+      >
+        <motion.button
+          className={`check-btn ${row.is_paid ? "done" : ""}`}
+          type="button"
+          onClick={onToggle}
+          whileTap={{ scale: 0.93 }}
+          animate={row.is_paid ? { scale: [0.9, 1.02, 1], boxShadow: ["0 0 0 rgba(94,161,255,0)", "0 0 18px rgba(94,161,255,.45)", "0 0 0 rgba(94,161,255,0)"] } : {}}
+        >
+          <span className="check-core">
+            <motion.span className="check-icon" animate={{ opacity: row.is_paid ? 1 : 0, scale: row.is_paid ? 1 : 0.7 }}>✓</motion.span>
+          </span>
+        </motion.button>
+        <input defaultValue={row.category} aria-label="Name" onChange={(e) => onNameChange(e.target.value)} />
+        <input defaultValue={row.amount} type="number" step="0.01" min="0" aria-label="Amount" onChange={(e) => onAmountChange(Number(e.target.value || 0))} />
+        <select value={rowCategory(row, "expense")} onChange={(e) => onMetaChange(e.target.value)}>
+          {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </motion.div>
+    </div>
   );
 }
 
+// ── Income Row ───────────────────────────────────────────────────────────────
+
 function IncomeRow({
-  row,
-  pending,
-  onNameChange,
-  onAmountChange
+  row, pending, onNameChange, onAmountChange, onDelete
 }: {
-  row: Transaction;
-  pending: boolean;
-  onNameChange: (value: string) => void;
-  onAmountChange: (value: number) => void;
+  row: Transaction; pending: boolean;
+  onNameChange: (v: string) => void; onAmountChange: (v: number) => void; onDelete: () => void;
 }) {
+  const [dragX, setDragX] = useState(0);
+  const swipeThreshold = -112;
   return (
-    <motion.div className={`workspace-row income-row row-hover ${pending ? "row-pending" : ""}`} whileTap={{ scale: 0.998 }}>
-      <input defaultValue={row.category} aria-label="Income Name" onChange={(e) => onNameChange(e.target.value)} />
-      <input defaultValue={row.amount} type="number" step="0.01" min="0" aria-label="Amount" onChange={(e) => onAmountChange(Number(e.target.value || 0))} />
-    </motion.div>
+    <div className="swipe-shell">
+      <motion.div className="swipe-delete-bg" animate={{ opacity: Math.min(1, Math.abs(dragX) / 110) }}>
+        <motion.span animate={{ scale: 0.92 + Math.min(0.34, Math.abs(dragX) / 200) }}>✕</motion.span>
+      </motion.div>
+      <motion.div
+        className={`workspace-row income-row row-hover ${pending ? "row-pending" : ""}`}
+        whileTap={{ scale: 0.998 }}
+        drag="x"
+        dragConstraints={{ left: -140, right: 0 }}
+        dragElastic={0.08}
+        dragMomentum={false}
+        onDrag={(_, info) => setDragX(Math.min(0, info.offset.x))}
+        onDragEnd={(_, info) => { const x = Math.min(0, info.offset.x); setDragX(0); if (x <= swipeThreshold) onDelete(); }}
+        transition={{ type: "spring", stiffness: 380, damping: 34, mass: 0.6 }}
+      >
+        <input defaultValue={row.category} aria-label="Income Name" onChange={(e) => onNameChange(e.target.value)} />
+        <input defaultValue={row.amount} type="number" step="0.01" min="0" aria-label="Amount" onChange={(e) => onAmountChange(Number(e.target.value || 0))} />
+      </motion.div>
+    </div>
   );
 }
+
+// ── Category Manager ─────────────────────────────────────────────────────────
 
 function CategoryManagerRow({ category, onDeleteRequest }: { category: string; onDeleteRequest: (name: string) => void }) {
   const router = useRouter();
@@ -562,12 +746,10 @@ function CategoryManagerRow({ category, onDeleteRequest }: { category: string; o
   );
 }
 
+// ── Donut Chart ──────────────────────────────────────────────────────────────
+
 function InteractiveDonut({
-  slices,
-  centerValue,
-  centerLabel,
-  hoverSlice,
-  setHoverSlice
+  slices, centerValue, centerLabel, hoverSlice, setHoverSlice
 }: {
   slices: Array<{ name: string; value: number; pct: number; start: number; end: number; color: string }>;
   centerValue: number;
@@ -575,77 +757,87 @@ function InteractiveDonut({
   hoverSlice: string | null;
   setHoverSlice: (name: string | null) => void;
 }) {
-  const size = 196;
-  const stroke = 28;
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
+  const SIZE = 210;
+  const INNER = 70;
+  const OUTER = 100;
+
+  const hoveredSlice = hoverSlice ? slices.find(s => s.name === hoverSlice) : null;
+  const displayValue = hoveredSlice ? hoveredSlice.value : centerValue;
+  const displayLabel = hoveredSlice ? hoveredSlice.name : (centerLabel || "Total Expenses");
+
+  const pieData = slices.map(s => ({ name: s.name, value: s.value, color: s.color }));
 
   return (
     <div className="donut-layout">
       <div className="donut-wrap">
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          {slices
-            .slice()
-            .sort((a, b) => {
-              if (a.name === hoverSlice) return 1;
-              if (b.name === hoverSlice) return -1;
-              return 0;
-            })
-            .map((slice, index) => {
-            const length = Math.max(0, slice.pct * circumference);
-            const offset = circumference * (1 - slice.start);
-            const active = hoverSlice === slice.name;
-            const hasHover = hoverSlice !== null;
-            return (
-              <motion.circle
-                key={slice.name}
-                cx={size / 2}
-                cy={size / 2}
-                r={radius}
-                stroke={slice.color}
-                strokeWidth={active ? stroke + 4 : stroke}
-                strokeLinecap="round"
-                fill="none"
-                transform={`rotate(-90 ${size / 2} ${size / 2})`}
-                initial={{ strokeDasharray: `0 ${circumference}` }}
-                animate={{
-                  strokeDasharray: `${length} ${circumference - length}`,
-                  strokeDashoffset: -offset,
-                  opacity: hasHover ? (active ? 1 : 0.3) : 0.92
-                }}
-                transition={{ type: "spring", stiffness: 170, damping: 24, delay: index * 0.03 }}
-                style={{
-                  filter: active
-                    ? `saturate(1.12) drop-shadow(0 0 7px ${slice.color}) drop-shadow(0 0 12px ${slice.color})`
-                    : hasHover
-                      ? "saturate(0.72)"
-                      : undefined
-                }}
-                onMouseEnter={() => setHoverSlice(slice.name)}
-                onMouseLeave={() => setHoverSlice(null)}
-              />
-            );
-          })}
-        </svg>
+        <PieChart width={SIZE} height={SIZE}>
+          <Pie
+            data={pieData}
+            dataKey="value"
+            cx="50%"
+            cy="50%"
+            innerRadius={INNER}
+            outerRadius={OUTER}
+            cornerRadius={12}
+            paddingAngle={2}
+            startAngle={90}
+            endAngle={-270}
+            stroke="none"
+            isAnimationActive={false}
+            onMouseLeave={() => setHoverSlice(null)}
+          >
+            {pieData.map((entry, i) => {
+              const active = hoverSlice === entry.name;
+              const hasHover = hoverSlice !== null;
+              return (
+                <Cell
+                  key={entry.name}
+                  fill={entry.color}
+                  opacity={hasHover ? (active ? 1 : 0.3) : 0.92}
+                  style={{
+                    filter: active ? `drop-shadow(0 0 8px ${entry.color}cc)` : "none",
+                    transition: "opacity 0.18s ease, filter 0.18s ease",
+                    cursor: "default",
+                  }}
+                  onMouseEnter={() => setHoverSlice(entry.name)}
+                />
+              );
+            })}
+          </Pie>
+        </PieChart>
+
         <div className="donut-center">
           <div className="donut-center-inner">
-            <p className="muted">{centerLabel}</p>
-            <AnimatedCurrency value={centerValue} />
+            <p className="muted" style={{ fontSize: 11, margin: 0 }}>
+              {displayLabel}
+            </p>
+            <AnimatedCurrency value={displayValue} />
           </div>
         </div>
       </div>
+
       <div className="pie-legend">
-        {slices.length === 0 ? <p className="muted">No expense rows for this month.</p> : null}
-        {slices.map((slice) => (
-          <motion.div key={slice.name} className={`row legend-row ${hoverSlice === slice.name ? "active" : ""}`} onMouseEnter={() => setHoverSlice(slice.name)} onMouseLeave={() => setHoverSlice(null)}>
-            <span className="row"><span className="legend-dot" style={{ background: slice.color }} />{slice.name}</span>
-            <span>Rs {slice.value.toLocaleString("en-IN")} {Math.round(slice.pct * 100)}%</span>
-          </motion.div>
+        {slices.length === 0 && <p className="muted">No expense rows for this month.</p>}
+        {slices.map(slice => (
+          <div
+            key={slice.name}
+            className={`row legend-row ${hoverSlice === slice.name ? "active" : ""}`}
+            onMouseEnter={() => setHoverSlice(slice.name)}
+            onMouseLeave={() => setHoverSlice(null)}
+          >
+            <span className="row">
+              <span className="legend-dot" style={{ background: slice.color }} />
+              {slice.name}
+            </span>
+            <span>Rs {slice.value.toLocaleString("en-IN")} · {Math.round(slice.pct * 100)}%</span>
+          </div>
         ))}
       </div>
     </div>
   );
 }
+
+// ── Utilities ────────────────────────────────────────────────────────────────
 
 function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;

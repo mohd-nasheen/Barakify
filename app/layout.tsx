@@ -4,6 +4,9 @@ import "./globals.css";
 import { logoutAction } from "@/app/actions/auth";
 import { getOptionalUser } from "@/lib/auth";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { NavThemeToggle } from "@/components/NavThemeToggle";
+import { NavLogo } from "@/components/NavLogo";
 
 export const metadata: Metadata = {
   title: "Barakify PWA",
@@ -20,27 +23,42 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const user = await getOptionalUser();
 
   return (
-    <html lang="en">
+    <html lang="en" data-theme="dark">
+      <head>
+        {/* Prevent flash of wrong theme before React hydrates */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem('theme')||'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}`
+          }}
+        />
+      </head>
       <body>
-        <ServiceWorkerRegister />
-        <header className="topnav">
-          <div className={`topnav-inner ${user ? "" : "solo"}`.trim()}>
-            <Link href={user ? "/dashboard" : "/login"}>Barakify</Link>
-            {user ? (
-              <div className="row">
-                <Link href="/settings/account" className="muted">
-                  Account
-                </Link>
-                <form action={logoutAction}>
-                  <button type="submit" className="button ghost">
-                    Logout
-                  </button>
-                </form>
-              </div>
-            ) : null}
-          </div>
-        </header>
-        <main className="container">{children}</main>
+        <ThemeProvider>
+          <ServiceWorkerRegister />
+          <header className="topnav">
+            <div className={`topnav-inner ${user ? "" : "solo"}`.trim()}>
+              <Link href={user ? "/dashboard" : "/login"} className="nav-logo-link">
+                <NavLogo />
+              </Link>
+              {user ? (
+                <div className="row">
+                  <Link href="/settings/account" className="muted nav-account-link">
+                    Account
+                  </Link>
+                  <NavThemeToggle />
+                  <form action={logoutAction}>
+                    <button type="submit" className="button ghost slim">
+                      Logout
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                <NavThemeToggle />
+              )}
+            </div>
+          </header>
+          <main className="container">{children}</main>
+        </ThemeProvider>
       </body>
     </html>
   );
