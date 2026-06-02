@@ -44,6 +44,7 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
   const [showCloneModal, setShowCloneModal] = useState(false);
   const [cloning, setCloning] = useState(false);
   const [cloneError, setCloneError] = useState<string | null>(null);
+  const [cloneSuccess, setCloneSuccess] = useState<string | null>(null);
   const [composerCategory, setComposerCategory] = useState(EXPENSE_CATEGORY_DEFAULTS[0]);
   const [composerNewCategory, setComposerNewCategory] = useState("");
   const [hoverSlice, setHoverSlice] = useState<string | null>(null);
@@ -80,8 +81,10 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
     let cancelled = false;
     const fd = new FormData();
     fd.set("month", selectedMonth);
+    console.log("[ENSURE] running ensureMonthStructure for:", selectedMonth);
     (async () => {
       await ensureMonthStructureAction(fd);
+      console.log("[ENSURE] done for:", selectedMonth, "cancelled:", cancelled);
       if (!cancelled) startTransition(() => router.refresh());
     })();
     return () => { cancelled = true; };
@@ -100,6 +103,19 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
     () => mergedRows.filter((t) => monthKey(new Date(t.transaction_date)) === selectedMonth),
     [mergedRows, selectedMonth]
   );
+
+  // DEBUG: trace what the client sees after month change
+  useEffect(() => {
+    console.log("[CLIENT] selectedMonth:", selectedMonth,
+      "| initialTransactions:", initialTransactions.length,
+      "| mergedRows:", mergedRows.length,
+      "| monthlyTransactions:", monthlyTransactions.length);
+    if (monthlyTransactions.length === 0 && mergedRows.length > 0) {
+      const allMonths = [...new Set(mergedRows.map(r => monthKey(new Date(r.transaction_date))))];
+      console.log("[CLIENT] no rows for", selectedMonth, "— months in data:", allMonths);
+    }
+  }, [selectedMonth, initialTransactions.length, mergedRows.length, monthlyTransactions.length]);
+
   const expenseRows = monthlyTransactions.filter((t) => t.type === "expense").sort(sortRows);
   const incomeRows = monthlyTransactions.filter((t) => t.type === "income").sort(sortRows);
   const paidExpenseCount = expenseRows.filter((t) => t.is_paid).length;
@@ -330,8 +346,18 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
       if (result?.error) {
         setCloneError(`Clone failed: ${result.error}`);
       } else {
+        console.log("[CLONE-UI] clone succeeded, targetMonth:", result.targetMonth);
         setShowCloneModal(false);
+        const sourceLabel = `${MONTHS[selectedMonthIndex]} ${selectedYear}`;
+        if (result.targetMonth) {
+          const [ty, tm] = result.targetMonth.split("-").map(Number);
+          console.log("[CLONE-UI] navigating to year:", ty, "monthIndex:", tm - 1);
+          setSelectedYear(ty);
+          setSelectedMonthIndex(tm - 1);
+          setCloneSuccess(`${sourceLabel} successfully cloned into ${MONTHS[tm - 1]} ${ty}`);
+        }
         router.refresh();
+        setTimeout(() => setCloneSuccess(null), 4000);
       }
     } finally {
       setCloning(false);
@@ -618,6 +644,19 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
                 </button>
               </div>
             </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {cloneSuccess ? (
+          <motion.div
+            className="clone-toast"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 30 }}
+          >
+            {cloneSuccess}
           </motion.div>
         ) : null}
       </AnimatePresence>

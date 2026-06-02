@@ -551,6 +551,22 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .clone-check-item { margin: 0; font-size: 14px; color: var(--income); font-weight: 500; }
 [data-theme="light"] .clone-check-item { color: #0369a1; }
 
+.clone-toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--income);
+  color: #fff;
+  padding: 10px 22px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 9999;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  pointer-events: none;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    CATEGORY COMPONENTS
    ═══════════════════════════════════════════════════════════════════════════ */

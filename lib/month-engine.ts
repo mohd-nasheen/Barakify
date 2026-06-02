@@ -19,6 +19,10 @@ function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function localDateStr(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function firstDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
@@ -62,8 +66,8 @@ export async function ensureMonthStructure(month: string) {
     .from("transactions")
     .select("id,type,amount,category,notes,transaction_date,due_date,created_at")
     .eq("user_id", userId)
-    .gte("transaction_date", targetStart.toISOString().slice(0, 10))
-    .lte("transaction_date", targetEnd.toISOString().slice(0, 10))
+    .gte("transaction_date", localDateStr(targetStart))
+    .lte("transaction_date", localDateStr(targetEnd))
     .order("created_at", { ascending: true });
   if (targetError) return;
 
@@ -75,7 +79,9 @@ export async function ensureMonthStructure(month: string) {
     if (seen.has(key)) duplicateIds.push(row.id);
     else seen.add(key);
   }
+  console.log("[ENSURE] month:", month, "total rows:", targetMonthItems?.length, "duplicates:", duplicateIds.length);
   if (duplicateIds.length > 0) {
+    console.log("[ENSURE] deleting duplicate IDs:", duplicateIds);
     await supabase.from("transactions").delete().in("id", duplicateIds);
   }
 }
@@ -85,7 +91,7 @@ export async function ensureCurrentMonthFromRecurring() {}
 
 // Clones sourceMonth's income + expense rows to the following month.
 // Returns { ok: true } on success, { error: string } on failure.
-export async function cloneMonth(sourceMonth: string): Promise<{ ok?: boolean; error?: string }> {
+export async function cloneMonth(sourceMonth: string): Promise<{ ok?: boolean; error?: string; targetMonth?: string }> {
   const supabase = await createClient();
   const { data: authData, error: authError } = await supabase.auth.getUser();
   if (authError || !authData.user) return { error: "unauthenticated" };
@@ -102,15 +108,15 @@ export async function cloneMonth(sourceMonth: string): Promise<{ ok?: boolean; e
     .from("transactions")
     .delete()
     .eq("user_id", userId)
-    .gte("transaction_date", targetStart.toISOString().slice(0, 10))
-    .lte("transaction_date", targetEnd.toISOString().slice(0, 10));
+    .gte("transaction_date", localDateStr(targetStart))
+    .lte("transaction_date", localDateStr(targetEnd));
 
   const { data: sourceRows, error: sourceError } = await supabase
     .from("transactions")
     .select("*")
     .eq("user_id", userId)
-    .gte("transaction_date", sourceStart.toISOString().slice(0, 10))
-    .lte("transaction_date", sourceEnd.toISOString().slice(0, 10));
+    .gte("transaction_date", localDateStr(sourceStart))
+    .lte("transaction_date", localDateStr(sourceEnd));
 
   if (sourceError) return { error: "fetch_error" };
   if (!sourceRows?.length) return { error: "no_source_data" };
@@ -126,26 +132,38 @@ export async function cloneMonth(sourceMonth: string): Promise<{ ok?: boolean; e
       amount: t.amount,
       category: t.category,
       notes: t.notes,
-      transaction_date: clonedDate.toISOString().slice(0, 10),
-      due_date: clonedDate.toISOString().slice(0, 10),
+      transaction_date: localDateStr(clonedDate),
+      due_date: localDateStr(clonedDate),
       is_paid: false,
       paid_at: null,
       is_recurring: t.is_recurring ?? false
     };
   });
 
+  console.log("[CLONE] source:", sourceMonth, "target:", targetMonth);
+  console.log("[CLONE] cloned rows:", cloned.length, "sample date:", cloned[0]?.transaction_date);
+
   const { error: insertError } = await supabase.from("transactions").insert(cloned);
   if (insertError) {
-    if (insertError.code === "23505") return { ok: true };
+    if (insertError.code === "23505") return { ok: true, targetMonth };
     if (isMissingParityColumn(insertError.message)) {
       const baseRows = cloned.map(({ id, user_id, type, amount, category, notes, transaction_date }) => ({
         id, user_id, type, amount, category, notes, transaction_date
       }));
       const { error: fallback } = await supabase.from("transactions").insert(baseRows);
       if (fallback && fallback.code !== "23505") return { error: fallback.message };
-      return { ok: true };
+      return { ok: true, targetMonth };
     }
     return { error: insertError.message };
   }
-  return { ok: true };
+  // Verify rows landed in the target month
+  const { data: verifyRows } = await supabase
+    .from("transactions")
+    .select("id,type,category,amount,transaction_date")
+    .eq("user_id", userId)
+    .gte("transaction_date", localDateStr(targetStart))
+    .lte("transaction_date", localDateStr(targetEnd));
+  console.log("[CLONE] verify target month rows:", verifyRows?.length, verifyRows?.map(r => `${r.type}:${r.category}:${r.transaction_date}`));
+
+  return { ok: true, targetMonth };
 }

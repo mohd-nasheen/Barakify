@@ -14,6 +14,8 @@ export default async function DashboardPage() {
     await ensureCurrentMonthFromRecurring();
     await ensureDefaultCategories();
     [transactions, categories] = await Promise.all([listTransactions(), listCategories()]);
+    console.log("[DASHBOARD] server fetch: total transactions =", transactions.length,
+      "sample dates:", transactions.slice(0, 5).map(t => t.transaction_date));
   } catch (error) {
     const message =
       error instanceof Error
