@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useActionState, useState } from "react";
 
 type ActionState = { error?: string; success?: string } | void;
@@ -110,13 +110,46 @@ export function PremiumAuthShell({ mode, action }: PremiumAuthShellProps) {
             )}
 
             <motion.button
-              className={`auth-submit ${success ? "is-success" : ""}`}
+              className={`auth-submit ${pending ? "is-loading" : ""} ${success ? "is-success" : ""}`}
               type="submit"
               disabled={pending}
-              whileHover={{ y: -2, boxShadow: "0 16px 38px rgba(79,140,255,.46)" }}
-              whileTap={{ scale: 0.98, y: 0 }}
+              whileHover={pending ? {} : { y: -2, boxShadow: "0 16px 38px rgba(79,140,255,.46)" }}
+              whileTap={pending ? {} : { scale: 0.98, y: 0 }}
             >
-              {pending ? "Please wait..." : success ? "Done" : submitLabel}
+              <AnimatePresence mode="wait" initial={false}>
+                {pending ? (
+                  <motion.span
+                    key="spinner"
+                    className="auth-submit-spinner-wrap"
+                    initial={{ opacity: 0, scale: 0.6 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.6 }}
+                    transition={{ duration: 0.18 }}
+                  >
+                    <span className="auth-submit-spinner" />
+                  </motion.span>
+                ) : success ? (
+                  <motion.span
+                    key="done"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.16 }}
+                  >
+                    Done
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key="label"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.16 }}
+                  >
+                    {submitLabel}
+                  </motion.span>
+                )}
+              </AnimatePresence>
             </motion.button>
 
             {"error" in (state ?? {}) ? <p className="status error">{state?.error}</p> : null}

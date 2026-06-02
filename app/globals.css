@@ -102,7 +102,7 @@ body::before {
 }
 
 a { color: inherit; text-decoration: none; }
-.container { position: relative; z-index: 1; max-width: 980px; margin: 0 auto; padding: 16px; }
+.container { position: relative; max-width: 980px; margin: 0 auto; padding: 16px; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    PRIMITIVES
@@ -181,13 +181,20 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   position: sticky;
   top: 0;
   z-index: 20;
-  border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  transition: border-color 0.3s ease;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
-[data-theme="dark"] .topnav  { background: rgba(2, 6, 23, 0.90); }
-[data-theme="light"] .topnav { background: rgba(248, 250, 255, 0.92); box-shadow: 0 1px 0 rgba(79,109,209,0.08); }
+[data-theme="dark"] .topnav {
+  background: rgba(10, 15, 30, 0.55);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+[data-theme="light"] .topnav {
+  background: rgba(255, 255, 255, 0.55);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
 
 .topnav-inner {
   max-width: 980px;
@@ -196,7 +203,9 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
+.topnav-inner .row { gap: 16px; align-items: center; }
 .topnav-inner.solo { justify-content: flex-start; }
 
 /* Logo link  — no underline, click-target reset */
@@ -242,22 +251,35 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 .nav-account-link,
 .nav-action-btn {
-  font-size: 14px;
-  font-weight: 400;
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1;
   color: var(--muted);
   text-decoration: none;
   background: none;
   border: none;
-  padding: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
   cursor: pointer;
   font-family: inherit;
   display: inline-flex;
   align-items: center;
-  transition: color 0.15s ease;
+  transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }
 .nav-account-link:hover,
-.nav-action-btn:hover { color: var(--text); }
+.nav-action-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-1px);
+}
+[data-theme="light"] .nav-account-link:hover,
+[data-theme="light"] .nav-action-btn:hover {
+  background: rgba(37, 99, 235, 0.06);
+}
+.nav-account-link:active,
+.nav-action-btn:active {
+  transform: translateY(0);
+}
 
 /* Theme toggle */
 .theme-toggle {
@@ -855,16 +877,52 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 .auth-link:hover::after, .auth-link:focus-visible::after { transform: scaleX(1); }
 .auth-submit {
+  position: relative;
   margin-top: 6px; min-height: 46px; border: 0; border-radius: 12px;
-  font-weight: 650; letter-spacing: 0.01em; color: #eaf4ff;
-  background: linear-gradient(135deg, #4f8cff 0%, #62d6ff 54%, #8de0ff 100%);
+  font-weight: 650; font-size: 15px; letter-spacing: 0.01em; color: #eaf4ff;
+  background: linear-gradient(135deg, #4f8cff 0%, #6dd5fa 54%, #8de0ff 100%);
   box-shadow: 0 12px 30px rgba(79,140,255,0.32), inset 0 1px 0 rgba(255,255,255,0.28);
   cursor: pointer;
+  overflow: hidden;
   transition: box-shadow .22s ease, transform .18s ease, opacity .18s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .auth-submit:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(79,140,255,0.3), 0 14px 32px rgba(79,140,255,0.38); }
-.auth-submit:disabled { opacity: .72; cursor: progress; }
+.auth-submit:disabled { cursor: progress; }
+.auth-submit.is-loading {
+  background: linear-gradient(135deg, #4f8cff 0%, #6dd5fa 100%);
+  background-size: 200% 100%;
+  animation: authGradientShift 1.8s ease infinite;
+}
 .auth-submit.is-success { background: linear-gradient(135deg, #46d39a, #6be6bd); color: #062018; box-shadow: 0 12px 30px rgba(70,211,154,0.30); }
+
+.auth-submit-spinner-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+}
+
+.auth-submit-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: authSpin 0.65s linear infinite;
+}
+
+@keyframes authSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes authGradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
 
 /* Misc legacy */
 .insight-row { display: grid; grid-template-columns: 28px 1fr; gap: var(--space-sm); align-items: center; }
@@ -937,7 +995,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .export-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 100;
   background: rgba(2, 6, 23, 0.60);
   backdrop-filter: blur(8px);
   display: flex;
@@ -983,19 +1041,28 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 
 .export-close {
-  background: none;
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border);
   color: var(--muted);
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.15s ease;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
-.export-close:hover { color: var(--text); border-color: var(--border-active); }
+.export-close:hover {
+  color: var(--text);
+  border-color: var(--border-active);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 12px rgba(79, 140, 255, 0.15);
+}
+[data-theme="light"] .export-close:hover {
+  background: rgba(37, 99, 235, 0.06);
+  box-shadow: 0 0 12px rgba(37, 99, 235, 0.10);
+}
 
 .export-body {
   flex: 1;
@@ -1279,7 +1346,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .logout-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 110;
   background: rgba(2, 6, 23, 0.65);
   backdrop-filter: blur(10px);
   display: grid;
