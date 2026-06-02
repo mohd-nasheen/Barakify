@@ -74,6 +74,8 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
   const monthRailRef = useRef<HTMLDivElement | null>(null);
   const monthChipRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const autosaveTimers = useRef(new Map<string, number>());
+  const routerRef = useRef(router);
+  routerRef.current = router;
 
   useEffect(() => {
     const handler = () => setShowExportModal(true);
@@ -83,8 +85,13 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
 
   useEffect(() => {
     const chip = monthChipRefs.current[selectedMonthIndex];
-    if (chip && monthRailRef.current) {
-      chip.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    const rail = monthRailRef.current;
+    if (chip && rail) {
+      const chipLeft = chip.offsetLeft;
+      const chipWidth = chip.offsetWidth;
+      const railWidth = rail.offsetWidth;
+      const target = chipLeft - railWidth / 2 + chipWidth / 2;
+      rail.scrollTo({ left: target, behavior: "smooth" });
     }
   }, [selectedMonthIndex]);
 
@@ -99,14 +106,13 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
     let cancelled = false;
     const fd = new FormData();
     fd.set("month", selectedMonth);
-    console.log("[ENSURE] running ensureMonthStructure for:", selectedMonth);
     (async () => {
       await ensureMonthStructureAction(fd);
-      console.log("[ENSURE] done for:", selectedMonth, "cancelled:", cancelled);
-      if (!cancelled) startTransition(() => router.refresh());
+      if (!cancelled) startTransition(() => routerRef.current.refresh());
     })();
     return () => { cancelled = true; };
-  }, [selectedMonth, startTransition, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMonth]);
 
   const mergedRows = useMemo(
     () =>
@@ -122,17 +128,6 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
     [mergedRows, selectedMonth]
   );
 
-  // DEBUG: trace what the client sees after month change
-  useEffect(() => {
-    console.log("[CLIENT] selectedMonth:", selectedMonth,
-      "| initialTransactions:", initialTransactions.length,
-      "| mergedRows:", mergedRows.length,
-      "| monthlyTransactions:", monthlyTransactions.length);
-    if (monthlyTransactions.length === 0 && mergedRows.length > 0) {
-      const allMonths = [...new Set(mergedRows.map(r => monthKey(new Date(r.transaction_date))))];
-      console.log("[CLIENT] no rows for", selectedMonth, "— months in data:", allMonths);
-    }
-  }, [selectedMonth, initialTransactions.length, mergedRows.length, monthlyTransactions.length]);
 
   const expenseRows = monthlyTransactions.filter((t) => t.type === "expense").sort(sortRows);
   const incomeRows = monthlyTransactions.filter((t) => t.type === "income").sort(sortRows);
@@ -364,12 +359,10 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
       if (result?.error) {
         setCloneError(`Clone failed: ${result.error}`);
       } else {
-        console.log("[CLONE-UI] clone succeeded, targetMonth:", result.targetMonth);
         setShowCloneModal(false);
         const sourceLabel = `${MONTHS[selectedMonthIndex]} ${selectedYear}`;
         if (result.targetMonth) {
           const [ty, tm] = result.targetMonth.split("-").map(Number);
-          console.log("[CLONE-UI] navigating to year:", ty, "monthIndex:", tm - 1);
           setSelectedYear(ty);
           setSelectedMonthIndex(tm - 1);
           setCloneSuccess(`${sourceLabel} successfully cloned into ${MONTHS[tm - 1]} ${ty}`);
@@ -398,11 +391,11 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
     <div className="stack month-workspace">
       <GlassCard className="month-hero">
         <div className="year-row">
-          <motion.button className="month-nav" type="button" onClick={() => setSelectedYear((year) => year - 1)} whileHover={{ y: -4, scale: 1.03, boxShadow: "0 10px 22px rgba(94,161,255,.32)" }} whileTap={{ scale: 0.94 }}>
+          <motion.button className="month-nav" type="button" onClick={() => setSelectedYear((year) => year - 1)} whileHover={{ y: -4, scale: 1.03, boxShadow: "0 8px 20px rgba(0,0,0,.30)" }} whileTap={{ scale: 0.94 }}>
             {"<"}
           </motion.button>
           <strong className="year-label">{selectedYear}</strong>
-          <motion.button className="month-nav" type="button" onClick={() => setSelectedYear((year) => year + 1)} whileHover={{ y: -4, scale: 1.03, boxShadow: "0 10px 22px rgba(94,161,255,.32)" }} whileTap={{ scale: 0.94 }}>
+          <motion.button className="month-nav" type="button" onClick={() => setSelectedYear((year) => year + 1)} whileHover={{ y: -4, scale: 1.03, boxShadow: "0 8px 20px rgba(0,0,0,.30)" }} whileTap={{ scale: 0.94 }}>
             {">"}
           </motion.button>
         </div>
@@ -415,7 +408,7 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
           }}
         >
           {MONTHS.map((month, index) => (
-            <motion.button key={month} ref={(el) => { monthChipRefs.current[index] = el; }} className={`month-chip ${selectedMonthIndex === index ? "active" : ""}`} type="button" onClick={() => setSelectedMonthIndex(index)} whileHover={{ y: -5, scale: 1.03, boxShadow: "0 10px 24px rgba(94,161,255,.30)" }} whileTap={{ scale: 0.94 }}>
+            <motion.button key={month} ref={(el) => { monthChipRefs.current[index] = el; }} className={`month-chip ${selectedMonthIndex === index ? "active" : ""}`} type="button" onClick={() => setSelectedMonthIndex(index)} whileHover={{ y: -5, scale: 1.03, boxShadow: "0 8px 20px rgba(0,0,0,.25)" }} whileTap={{ scale: 0.94 }}>
               {month}
             </motion.button>
           ))}
@@ -819,7 +812,7 @@ function ExpenseRow({
           type="button"
           onClick={onToggle}
           whileTap={{ scale: 0.93 }}
-          animate={row.is_paid ? { scale: [0.9, 1.02, 1], boxShadow: ["0 0 0 rgba(94,161,255,0)", "0 0 18px rgba(94,161,255,.45)", "0 0 0 rgba(94,161,255,0)"] } : {}}
+          animate={row.is_paid ? { scale: [0.9, 1.02, 1] } : {}}
         >
           <span className="check-core">
             <motion.span className="check-icon" animate={{ opacity: row.is_paid ? 1 : 0, scale: row.is_paid ? 1 : 0.7 }}>✓</motion.span>
