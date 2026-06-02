@@ -180,7 +180,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .topnav {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 100;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
@@ -640,7 +640,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  z-index: 200;
   background: rgba(2, 6, 23, 0.70);
   display: grid;
   place-items: end center;
@@ -971,7 +971,6 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   cursor: pointer;
   flex-shrink: 0;
   position: relative;
-  z-index: 92;
   transition: border-color 0.2s ease;
 }
 .mobile-hamburger:hover { border-color: var(--border-active); }
@@ -987,47 +986,124 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .mobile-menu-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 90;
-  background: rgba(2, 6, 23, 0.55);
+  z-index: 999;
+  background: rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
-[data-theme="light"] .mobile-menu-backdrop { background: rgba(20, 30, 70, 0.20); }
+[data-theme="light"] .mobile-menu-backdrop { background: rgba(0, 0, 0, 0.15); }
 
 .mobile-menu {
   position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
-  width: min(300px, 80vw);
-  z-index: 91;
+  width: min(85vw, 360px);
+  z-index: 1000;
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border-left: 1px solid var(--border);
-  padding: 80px 20px 32px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.45);
 }
 [data-theme="dark"] .mobile-menu {
-  background: rgba(8, 14, 28, 0.88);
+  background: rgba(10, 15, 30, 0.75);
 }
 [data-theme="light"] .mobile-menu {
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.72);
+  border-left-color: rgba(255, 255, 255, 0.35);
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.15);
 }
 
+/* ── Drawer Header ── */
+.mobile-menu-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: calc(24px + env(safe-area-inset-top, 0)) 20px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.mobile-menu-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mobile-menu-brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mobile-menu-brand-logo img {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.mobile-menu-brand-name {
+  font-size: 15px;
+  font-weight: 780;
+  letter-spacing: 0.07em;
+}
+[data-theme="dark"] .mobile-menu-brand-name {
+  background: linear-gradient(120deg, #8ab8ff 0%, #62d6ff 55%, #a78fff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+[data-theme="light"] .mobile-menu-brand-name { color: #1e3a8a; }
+
+.mobile-menu-tagline {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.mobile-menu-close {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: inherit;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+.mobile-menu-close:hover {
+  color: var(--text);
+  border-color: var(--border-active);
+  background: rgba(255, 255, 255, 0.08);
+}
+[data-theme="light"] .mobile-menu-close { background: rgba(37, 99, 235, 0.04); }
+[data-theme="light"] .mobile-menu-close:hover { background: rgba(37, 99, 235, 0.08); }
+
+/* ── Navigation Items ── */
 .mobile-menu-items {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  padding: 12px;
+  flex: 1;
 }
 
 .mobile-menu-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   padding: 14px 16px;
   border-radius: 12px;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 500;
   color: var(--text);
   background: none;
@@ -1036,14 +1112,36 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   font-family: inherit;
   text-decoration: none;
   min-height: 48px;
-  transition: background 0.15s ease;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
 }
-.mobile-menu-item:hover { background: rgba(79, 140, 255, 0.08); }
-[data-theme="light"] .mobile-menu-item:hover { background: rgba(37, 99, 235, 0.06); }
-.mobile-menu-item svg { flex-shrink: 0; color: var(--muted); }
+.mobile-menu-item:hover {
+  background: rgba(79, 140, 255, 0.08);
+  box-shadow: 0 0 0 1px rgba(79, 140, 255, 0.08);
+}
+.mobile-menu-item:active {
+  background: rgba(79, 140, 255, 0.14);
+}
+[data-theme="light"] .mobile-menu-item:hover {
+  background: rgba(37, 99, 235, 0.06);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.06);
+}
+[data-theme="light"] .mobile-menu-item:active {
+  background: rgba(37, 99, 235, 0.10);
+}
+.mobile-menu-item svg { flex-shrink: 0; color: var(--muted); transition: color 0.18s ease; }
+.mobile-menu-item:hover svg { color: var(--accent); }
 
-.mobile-menu-logout { color: var(--danger); margin-top: 8px; border-top: 1px solid var(--border); padding-top: 18px; }
+/* ── Drawer Footer / Logout ── */
+.mobile-menu-footer {
+  padding: 8px 12px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0));
+  border-top: 1px solid var(--border);
+}
+
+.mobile-menu-logout { color: var(--danger); }
 .mobile-menu-logout svg { color: var(--danger); }
+.mobile-menu-logout:hover { background: rgba(239, 68, 68, 0.08); box-shadow: none; }
+.mobile-menu-logout:hover svg { color: var(--danger); }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MOBILE FAB
@@ -1382,7 +1480,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .export-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 300;
   background: rgba(2, 6, 23, 0.60);
   backdrop-filter: blur(8px);
   display: flex;
@@ -1729,7 +1827,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .logout-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 110;
+  z-index: 400;
   background: rgba(2, 6, 23, 0.65);
   backdrop-filter: blur(10px);
   display: grid;
