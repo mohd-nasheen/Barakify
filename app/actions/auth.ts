@@ -1,8 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+
+async function getOrigin(): Promise<string> {
+  const h = await headers();
+  const host = h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https");
+  return `${proto}://${host}`;
+}
 
 export async function loginAction(_: unknown, formData: FormData) {
   const email = String(formData.get("email") ?? "");
@@ -24,7 +32,7 @@ export async function logoutAction() {
 export async function forgotPasswordAction(_: unknown, formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const supabase = await createClient();
-  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const origin = await getOrigin();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${origin}/reset-password`
   });
@@ -48,7 +56,7 @@ export async function resendResetEmailAction(_: unknown, formData: FormData) {
   if (!email) return { error: "Please enter your email address." };
 
   const supabase = await createClient();
-  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const origin = await getOrigin();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${origin}/reset-password`
   });
