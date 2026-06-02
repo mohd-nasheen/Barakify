@@ -8,6 +8,7 @@ import { NavThemeToggle } from "@/components/NavThemeToggle";
 import { NavLogo } from "@/components/NavLogo";
 import { NavExportButton } from "@/components/NavExportButton";
 import { NavLogout } from "@/components/NavLogout";
+import { MobileNav } from "@/components/MobileNav";
 
 export const metadata: Metadata = {
   title: "Barakify PWA",
@@ -42,14 +43,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLogo />
               </Link>
               {user ? (
-                <div className="row">
-                  <Link href="/settings/account" className="muted nav-account-link">
-                    Account
-                  </Link>
-                  <NavExportButton />
-                  <NavThemeToggle />
-                  <NavLogout />
-                </div>
+                <>
+                  <div className="row nav-desktop-items">
+                    <Link href="/settings/account" className="muted nav-account-link">
+                      Account
+                    </Link>
+                    <NavExportButton />
+                    <NavThemeToggle />
+                    <NavLogout />
+                  </div>
+                  <div className="nav-mobile-items">
+                    <NavThemeToggle />
+                    <MobileNav />
+                  </div>
+                </>
               ) : (
                 <NavThemeToggle />
               )}

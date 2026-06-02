@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import type { Transaction } from "@/lib/types";
 import type { ExportPeriod, ExportType, ExportOptions } from "@/lib/pdf-engine";
 
@@ -30,6 +30,19 @@ export function ExportModal({
     includeRunningBalance: true,
     includeCompletionMetrics: true,
   });
+
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    function check() { setIsMobile(window.innerWidth <= 767); }
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  const drawerAnim = useMemo(() => isMobile
+    ? { initial: { y: "100%", opacity: 0 }, animate: { y: 0, opacity: 1 }, exit: { y: "100%", opacity: 0 } }
+    : { initial: { x: "100%", opacity: 0 }, animate: { x: 0, opacity: 1 }, exit: { x: "100%", opacity: 0 } },
+  [isMobile]);
 
   // Custom month picker state
   const currentYear = new Date().getFullYear();
@@ -105,9 +118,9 @@ export function ExportModal({
         >
           <motion.div
             className="export-drawer"
-            initial={{ x: "100%", opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: "100%", opacity: 0 }}
+            initial={drawerAnim.initial}
+            animate={drawerAnim.animate}
+            exit={drawerAnim.exit}
             transition={{ type: "spring", stiffness: 300, damping: 32 }}
           >
             {/* ── Header ── */}

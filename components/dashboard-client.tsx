@@ -68,8 +68,11 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
   const [deletingCategory, setDeletingCategory] = useState(false);
   const [deletingRow, setDeletingRow] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showFabMenu, setShowFabMenu] = useState(false);
+  const [showMobileActions, setShowMobileActions] = useState(false);
 
   const monthRailRef = useRef<HTMLDivElement | null>(null);
+  const monthChipRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const autosaveTimers = useRef(new Map<string, number>());
 
   useEffect(() => {
@@ -77,6 +80,13 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
     window.addEventListener("open-export-modal", handler);
     return () => window.removeEventListener("open-export-modal", handler);
   }, []);
+
+  useEffect(() => {
+    const chip = monthChipRefs.current[selectedMonthIndex];
+    if (chip && monthRailRef.current) {
+      chip.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }, [selectedMonthIndex]);
 
   const selectedMonth = `${selectedYear}-${String(selectedMonthIndex + 1).padStart(2, "0")}`;
   const nextMonth = useMemo(() => nextMonthOf(selectedMonth), [selectedMonth]);
@@ -405,7 +415,7 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
           }}
         >
           {MONTHS.map((month, index) => (
-            <motion.button key={month} className={`month-chip ${selectedMonthIndex === index ? "active" : ""}`} type="button" onClick={() => setSelectedMonthIndex(index)} whileHover={{ y: -5, scale: 1.03, boxShadow: "0 10px 24px rgba(94,161,255,.30)" }} whileTap={{ scale: 0.94 }}>
+            <motion.button key={month} ref={(el) => { monthChipRefs.current[index] = el; }} className={`month-chip ${selectedMonthIndex === index ? "active" : ""}`} type="button" onClick={() => setSelectedMonthIndex(index)} whileHover={{ y: -5, scale: 1.03, boxShadow: "0 10px 24px rgba(94,161,255,.30)" }} whileTap={{ scale: 0.94 }}>
               {month}
             </motion.button>
           ))}
@@ -481,7 +491,7 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
           <GlassCard className="section-expenses">
             <div className="row">
               <h3 className="section-title">Expenses</h3>
-              <div className="row header-actions">
+              <div className="row header-actions desktop-header-actions">
                 <button
                   className="button ghost slim"
                   type="button"
@@ -495,8 +505,16 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
                   Category Settings
                 </button>
               </div>
+              <div className="row header-actions mobile-header-actions">
+                <button className="button ghost slim" type="button" onClick={() => setShowCategorySettings(true)}>
+                  Categories
+                </button>
+                <button className="button ghost slim" type="button" onClick={() => setShowMobileActions(true)}>
+                  More
+                </button>
+              </div>
             </div>
-            <div className="sheet-head expense-head"><span>Paid</span><span>Name</span><span>Amount</span><span>Category</span></div>
+            <div className="sheet-head expense-head hide-mobile"><span>Paid</span><span>Name</span><span>Amount</span><span>Category</span></div>
             <div className="workspace-table compact">
               {expenseRows.map((row) => (
                 <ExpenseRow
@@ -676,6 +694,95 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
         selectedMonth={selectedMonth}
         selectedYear={selectedYear}
       />
+
+      {/* ── Mobile FAB ── */}
+      <div className="mobile-fab-wrap">
+        <AnimatePresence>
+          {showFabMenu ? (
+            <>
+              <motion.div
+                className="fab-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowFabMenu(false)}
+              />
+              <motion.div
+                className="fab-menu"
+                initial={{ opacity: 0, y: 16, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.9 }}
+                transition={{ type: "spring", stiffness: 340, damping: 28 }}
+              >
+                <button
+                  type="button"
+                  className="fab-menu-item"
+                  onClick={() => {
+                    setShowFabMenu(false);
+                    setShowIncomeComposer(true);
+                  }}
+                >
+                  <span className="fab-menu-icon income">+</span>
+                  Add Income
+                </button>
+                <button
+                  type="button"
+                  className="fab-menu-item"
+                  onClick={() => {
+                    setShowFabMenu(false);
+                    setShowExpenseComposer(true);
+                  }}
+                >
+                  <span className="fab-menu-icon expense">+</span>
+                  Add Expense
+                </button>
+              </motion.div>
+            </>
+          ) : null}
+        </AnimatePresence>
+        <motion.button
+          type="button"
+          className="mobile-fab"
+          onClick={() => setShowFabMenu(!showFabMenu)}
+          whileTap={{ scale: 0.92 }}
+          animate={{ rotate: showFabMenu ? 45 : 0 }}
+        >
+          +
+        </motion.button>
+      </div>
+
+      {/* ── Mobile More Actions (Clone, Export, Reset) ── */}
+      <AnimatePresence>
+        {showMobileActions ? (
+          <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={(e) => { if (e.target === e.currentTarget) setShowMobileActions(false); }}>
+            <motion.div className="modal-card mobile-actions-card" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }}>
+              <div className="row">
+                <h3>More Actions</h3>
+                <button className="button ghost slim" type="button" onClick={() => setShowMobileActions(false)}>✕</button>
+              </div>
+              <div className="mobile-actions-list">
+                <button
+                  type="button"
+                  className="mobile-action-item"
+                  disabled={currentMonthIsEmpty}
+                  onClick={() => { setShowMobileActions(false); setCloneError(null); setShowCloneModal(true); }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="6" width="9" height="9" rx="2"/><path d="M3 12V4a2 2 0 012-2h8"/></svg>
+                  Clone Month
+                </button>
+                <button
+                  type="button"
+                  className="mobile-action-item"
+                  onClick={() => { setShowMobileActions(false); setShowExportModal(true); }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 2v10m0 0l-3.5-3.5M9 12l3.5-3.5M3 15h12"/></svg>
+                  Export PDF
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
@@ -718,11 +825,20 @@ function ExpenseRow({
             <motion.span className="check-icon" animate={{ opacity: row.is_paid ? 1 : 0, scale: row.is_paid ? 1 : 0.7 }}>✓</motion.span>
           </span>
         </motion.button>
-        <input defaultValue={row.category} aria-label="Name" onChange={(e) => onNameChange(e.target.value)} />
-        <input defaultValue={row.amount} type="number" step="0.01" min="0" aria-label="Amount" onChange={(e) => onAmountChange(Number(e.target.value || 0))} />
-        <select value={rowCategory(row, "expense")} onChange={(e) => onMetaChange(e.target.value)}>
-          {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+        <div className="mobile-card-field">
+          <span className="mobile-card-label">Name</span>
+          <input defaultValue={row.category} aria-label="Name" onChange={(e) => onNameChange(e.target.value)} />
+        </div>
+        <div className="mobile-card-field">
+          <span className="mobile-card-label">Amount</span>
+          <input defaultValue={row.amount} type="number" step="0.01" min="0" aria-label="Amount" onChange={(e) => onAmountChange(Number(e.target.value || 0))} />
+        </div>
+        <div className="mobile-card-field">
+          <span className="mobile-card-label">Category</span>
+          <select value={rowCategory(row, "expense")} onChange={(e) => onMetaChange(e.target.value)}>
+            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
       </motion.div>
     </div>
   );
@@ -754,8 +870,14 @@ function IncomeRow({
         onDragEnd={(_, info) => { const x = Math.min(0, info.offset.x); setDragX(0); if (x <= swipeThreshold) onDelete(); }}
         transition={{ type: "spring", stiffness: 380, damping: 34, mass: 0.6 }}
       >
-        <input defaultValue={row.category} aria-label="Income Name" onChange={(e) => onNameChange(e.target.value)} />
-        <input defaultValue={row.amount} type="number" step="0.01" min="0" aria-label="Amount" onChange={(e) => onAmountChange(Number(e.target.value || 0))} />
+        <div className="mobile-card-field">
+          <span className="mobile-card-label">Name</span>
+          <input defaultValue={row.category} aria-label="Income Name" onChange={(e) => onNameChange(e.target.value)} />
+        </div>
+        <div className="mobile-card-field">
+          <span className="mobile-card-label">Amount</span>
+          <input defaultValue={row.amount} type="number" step="0.01" min="0" aria-label="Amount" onChange={(e) => onAmountChange(Number(e.target.value || 0))} />
+        </div>
       </motion.div>
     </div>
   );
@@ -812,9 +934,17 @@ function InteractiveDonut({
   hoverSlice: string | null;
   setHoverSlice: (name: string | null) => void;
 }) {
-  const SIZE = 210;
-  const INNER = 70;
-  const OUTER = 100;
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    function check() { setIsMobile(window.innerWidth <= 767); }
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  const SIZE = isMobile ? 180 : 210;
+  const INNER = isMobile ? 58 : 70;
+  const OUTER = isMobile ? 85 : 100;
 
   const hoveredSlice = hoverSlice ? slices.find(s => s.name === hoverSlice) : null;
   const displayValue = hoveredSlice ? hoveredSlice.value : centerValue;
