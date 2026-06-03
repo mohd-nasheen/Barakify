@@ -67,6 +67,7 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
   const [rowDeleteModal, setRowDeleteModal] = useState<{ open: boolean; row: Transaction | null }>({ open: false, row: null });
   const [deletingCategory, setDeletingCategory] = useState(false);
   const [deletingRow, setDeletingRow] = useState(false);
+  const [deleteRowError, setDeleteRowError] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showFabMenu, setShowFabMenu] = useState(false);
   const [showMobileActions, setShowMobileActions] = useState(false);
@@ -328,6 +329,7 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
   }
 
   function requestDeleteRow(row: Transaction) {
+    setDeleteRowError(null);
     setRowDeleteModal({ open: true, row });
   }
 
@@ -337,12 +339,15 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
       return;
     }
     setDeletingRow(true);
+    setDeleteRowError(null);
     try {
       const fd = new FormData();
       fd.set("id", rowDeleteModal.row.id);
       await deleteTransactionAction(fd);
       setRowDeleteModal({ open: false, row: null });
       router.refresh();
+    } catch {
+      setDeleteRowError("Failed to delete. Please try again.");
     } finally {
       setDeletingRow(false);
     }
@@ -656,6 +661,7 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
             <motion.div className="modal-card" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }}>
               <h3>Delete Row</h3>
               <p className="muted">Delete &quot;{rowDeleteModal.row?.category}&quot;? This cannot be undone.</p>
+              {deleteRowError ? <p className="status error">{deleteRowError}</p> : null}
               <div className="row">
                 <button className="button ghost slim" type="button" onClick={() => setRowDeleteModal({ open: false, row: null })}>Cancel</button>
                 <button className="button slim" type="button" onClick={confirmDeleteRow} disabled={deletingRow}>

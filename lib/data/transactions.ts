@@ -83,8 +83,20 @@ export async function createTransaction(input: {
 
 export async function deleteTransaction(id: string) {
   const supabase = await createClient();
-  const { error } = await supabase.from("transactions").delete().eq("id", id);
+  const { data: userData, error: userErr } = await supabase.auth.getUser();
+  if (userErr || !userData.user) throw new Error("Unauthorized");
+
+  const { data, error } = await supabase
+    .from("transactions")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userData.user.id)
+    .select("id");
+
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error("Delete failed: row not found or not authorized");
+  }
 }
 
 export async function togglePaid(id: string, isPaid: boolean) {

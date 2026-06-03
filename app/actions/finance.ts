@@ -50,7 +50,9 @@ export async function addTransactionAction(formData: FormData) {
 }
 
 export async function deleteTransactionAction(formData: FormData) {
-  await deleteTransaction(String(formData.get("id")));
+  const id = String(formData.get("id"));
+  if (!id) throw new Error("Missing transaction id");
+  await deleteTransaction(id);
   revalidatePath("/dashboard");
 }
 
