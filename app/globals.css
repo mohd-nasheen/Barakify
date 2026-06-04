@@ -424,11 +424,11 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   position: absolute;
   inset: 0;
   border-radius: 12px;
-  background: linear-gradient(100deg, rgba(220,38,38,0.90), rgba(185,28,28,0.96));
+  background: #F8D7DA;
   display: grid;
   place-items: center end;
   padding-right: 16px;
-  color: #fff;
+  color: #DC3545;
   font-size: 18px;
   pointer-events: none;
 }

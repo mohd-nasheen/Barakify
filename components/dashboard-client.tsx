@@ -51,6 +51,7 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
   const [hoverSlice, setHoverSlice] = useState<string | null>(null);
   const [optimisticRows, setOptimisticRows] = useState<Record<string, RowPatch>>({});
   const [pendingCreateRows, setPendingCreateRows] = useState<Transaction[]>([]);
+  const [deletedRowIds, setDeletedRowIds] = useState<Set<string>>(new Set());
   const [pendingRows, setPendingRows] = useState<Record<string, boolean>>({});
   const [, startTransition] = useTransition();
   const [savingIncome, setSavingIncome] = useState(false);
@@ -83,6 +84,15 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
     window.addEventListener("open-export-modal", handler);
     return () => window.removeEventListener("open-export-modal", handler);
   }, []);
+
+  // Clear stale deleted IDs once server data has caught up
+  useEffect(() => {
+    if (deletedRowIds.size === 0) return;
+    const serverIds = new Set(initialTransactions.map((t) => t.id));
+    const stillPresent = new Set<string>();
+    deletedRowIds.forEach((id) => { if (serverIds.has(id)) stillPresent.add(id); });
+    if (stillPresent.size < deletedRowIds.size) setDeletedRowIds(stillPresent);
+  }, [initialTransactions, deletedRowIds]);
 
   useEffect(() => {
     const chip = monthChipRefs.current[selectedMonthIndex];
@@ -117,11 +127,13 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
 
   const mergedRows = useMemo(
     () =>
-      [...initialTransactions, ...pendingCreateRows].map((row) => ({
-        ...row,
-        ...(optimisticRows[row.id] ?? {})
-      })),
-    [initialTransactions, optimisticRows, pendingCreateRows]
+      [...initialTransactions, ...pendingCreateRows]
+        .filter((row) => !deletedRowIds.has(row.id))
+        .map((row) => ({
+          ...row,
+          ...(optimisticRows[row.id] ?? {})
+        })),
+    [initialTransactions, optimisticRows, pendingCreateRows, deletedRowIds]
   );
 
   const monthlyTransactions = useMemo(
@@ -338,14 +350,19 @@ export function DashboardClient({ initialTransactions, categories }: { initialTr
       setRowDeleteModal({ open: false, row: null });
       return;
     }
+    const rowId = rowDeleteModal.row.id;
     setDeletingRow(true);
     setDeleteRowError(null);
     try {
       const fd = new FormData();
-      fd.set("id", rowDeleteModal.row.id);
+      fd.set("id", rowId);
       await deleteTransactionAction(fd);
+      // Server confirmed delete — remove from UI immediately
+      setDeletedRowIds((prev) => new Set(prev).add(rowId));
+      setOptimisticRows((prev) => { const next = { ...prev }; delete next[rowId]; return next; });
       setRowDeleteModal({ open: false, row: null });
-      router.refresh();
+      // Sync server data in the background
+      startTransition(() => router.refresh());
     } catch {
       setDeleteRowError("Failed to delete. Please try again.");
     } finally {
